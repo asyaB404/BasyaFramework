@@ -1,0 +1,16 @@
+{
+    "name": "BasyaFramework.Editor",
+    "rootNamespace": "",
+    "references": [
+        "GUID:08712f5d565e741c38405cf98c06e931"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
