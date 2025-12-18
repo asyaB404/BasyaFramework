@@ -23,8 +23,11 @@ namespace BasyaFramework.UI
         {
             get
             {
-                if (gameObject.TryGetComponent(out _canvasGroup) && _canvasGroup == null)
-                    _canvasGroup = gameObject.AddComponent<CanvasGroup>();
+                if (_canvasGroup == null)
+                {
+                    if (!gameObject.TryGetComponent(out _canvasGroup))
+                        _canvasGroup = gameObject.AddComponent<CanvasGroup>();
+                }
                 return _canvasGroup;
             }
         }
