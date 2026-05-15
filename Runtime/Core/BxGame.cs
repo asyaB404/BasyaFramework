@@ -1,5 +1,6 @@
 using BasyaFramework.Model;
 using BasyaFramework.ResourceManager;
+using BasyaFramework.Timer;
 using BasyaFramework.UI;
 using UnityEngine;
 
@@ -16,6 +17,8 @@ namespace BasyaFramework.Core
         private BxModelManager _modelManager;
         public static BxUIManager UIManager => Instance._uiManager;
         private BxUIManager _uiManager;
+        public static BxTimerManager TimerManager => Instance._timerManager;
+        private BxTimerManager _timerManager;
 
         internal static BxGame Instance
         {
@@ -41,6 +44,7 @@ namespace BasyaFramework.Core
             _resourceManager = resourceManager ?? new DefaultResourceManager();
             _modelManager = new BxModelManager();
             _uiManager = new BxUIManager(uiConfig);
+            _timerManager = new BxTimerManager();
             InitializeModel();
         }
 
@@ -59,6 +63,7 @@ namespace BasyaFramework.Core
         {
             _modelManager.Update();
             _uiManager.Update();
+            _timerManager.Update();
         }
     }
 }

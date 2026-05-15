@@ -2,21 +2,18 @@ using System;
 using System.Collections.Generic;
 using BasyaFramework.Logger;
 using UnityEngine;
-using Object = UnityEngine.Object;
 
 namespace BasyaFramework.Timer
 {
     /// <summary>
     /// 全局计时器管理：基于 <see cref="Time.unscaledDeltaTime"/> 累加，快照迭代避免回调内改表。
     /// </summary>
-    public static class BxTimerManager
+    public class BxTimerManager
     {
-        private static int _timeId;
-        private static readonly Dictionary<int, TimerEntry> TimeDic = new();
-        private static readonly Dictionary<int, TimerEntry> TimeDicAct = new();
-        private static readonly List<int> RemoveList = new();
-        private static BxTimerDriver _driver;
-        private static GameObject _driverRoot;
+        private int _timeId;
+        private readonly Dictionary<int, TimerEntry> _timeDic = new();
+        private readonly Dictionary<int, TimerEntry> _timeDicAct = new();
+        private readonly List<int> _removeList = new();
 
         private sealed class TimerEntry
         {
@@ -51,32 +48,21 @@ namespace BasyaFramework.Timer
             }
         }
 
-        private static void EnsureRunner()
-        {
-            if (_driver != null)
-                return;
-
-            _driverRoot = new GameObject("[BxTimerManager]");
-            _driverRoot.hideFlags = HideFlags.HideInHierarchy;
-            Object.DontDestroyOnLoad(_driverRoot);
-            _driver = _driverRoot.AddComponent<BxTimerDriver>();
-        }
-
         /// <summary>
-        /// 由 <see cref="BxTimerDriver"/> 每帧调用；也可在外部统一 Update 中显式调用（需自行保证每帧一次）。
+        /// 由 <c>BxGame.Update</c> 每帧调用一次；需保证全局每帧只进入一次。
         /// </summary>
-        public static void Tick()
+        public void Update()
         {
             var t = Time.unscaledDeltaTime;
-            RemoveList.Clear();
-            TimeDicAct.Clear();
+            _removeList.Clear();
+            _timeDicAct.Clear();
 
-            foreach (var kv in TimeDic)
+            foreach (var kv in _timeDic)
             {
-                TimeDicAct.Add(kv.Key, kv.Value);
+                _timeDicAct.Add(kv.Key, kv.Value);
             }
 
-            foreach (var kv in TimeDicAct)
+            foreach (var kv in _timeDicAct)
             {
                 var timer = kv.Value;
 
@@ -87,7 +73,7 @@ namespace BasyaFramework.Timer
                         var mb = timer.act_void.Target as MonoBehaviour;
                         if (mb == null)
                         {
-                            RemoveList.Add(kv.Key);
+                            _removeList.Add(kv.Key);
                             continue;
                         }
                     }
@@ -100,7 +86,7 @@ namespace BasyaFramework.Timer
                         var mb = timer.act.Target as MonoBehaviour;
                         if (mb == null)
                         {
-                            RemoveList.Add(kv.Key);
+                            _removeList.Add(kv.Key);
                             continue;
                         }
                     }
@@ -144,7 +130,7 @@ namespace BasyaFramework.Timer
                 {
                     if (timer.sdt >= timer.total)
                     {
-                        RemoveList.Add(kv.Key);
+                        _removeList.Add(kv.Key);
                         if (!bcall && timer.act != null)
                         {
                             timer.act.Invoke(0);
@@ -153,9 +139,9 @@ namespace BasyaFramework.Timer
                 }
             }
 
-            foreach (var tid in RemoveList)
+            foreach (var tid in _removeList)
             {
-                if (TimeDic.Remove(tid))
+                if (_timeDic.Remove(tid))
                 {
                     BxDebug.Log($"remove timer {tid}");
                 }
@@ -170,13 +156,12 @@ namespace BasyaFramework.Timer
         /// <param name="loop">true 时无限循环；false 时总共触发一次（total 与 duration 相同）</param>
         /// <param name="callImmediately">为 true 时在注册时立即调用一次 <paramref name="cb"/></param>
         /// <returns>定时器 id，用于 <see cref="DelTimer"/></returns>
-        public static int AddTimer(double duration, Action cb, bool loop = true, bool callImmediately = false)
+        public int AddTimer(double duration, Action cb, bool loop = true, bool callImmediately = false)
         {
-            EnsureRunner();
             var tid = ++_timeId;
 
             var timer = new TimerEntry(cb, duration, loop ? -1 : duration);
-            TimeDic[tid] = timer;
+            _timeDic[tid] = timer;
 
             if (callImmediately)
                 cb?.Invoke();
@@ -187,13 +172,12 @@ namespace BasyaFramework.Timer
         /// <summary>
         /// 在 <paramref name="total"/> 时间内按 <paramref name="duration"/> 节拍报告剩余量（回调参数为取整后的剩余时间）。
         /// </summary>
-        public static int AddTimer(double total, Action<double> cb, float duration = 1.0f, bool callImmediately = true)
+        public int AddTimer(double total, Action<double> cb, float duration = 1.0f, bool callImmediately = true)
         {
-            EnsureRunner();
             var tid = ++_timeId;
 
             var timer = new TimerEntry(cb, duration, total);
-            TimeDic[tid] = timer;
+            _timeDic[tid] = timer;
 
             if (callImmediately)
                 cb?.Invoke(total);
@@ -201,18 +185,18 @@ namespace BasyaFramework.Timer
             return tid;
         }
 
-        public static void DelTimer(int tid)
+        public void DelTimer(int tid)
         {
-            if (TimeDic.ContainsKey(tid))
+            if (_timeDic.ContainsKey(tid))
             {
-                TimeDic.Remove(tid);
+                _timeDic.Remove(tid);
                 BxDebug.Log($"remove timer {tid}");
             }
         }
 
-        public static bool HasTimer(int tid)
+        public bool HasTimer(int tid)
         {
-            return TimeDic.ContainsKey(tid);
+            return _timeDic.ContainsKey(tid);
         }
     }
 }
