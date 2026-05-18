@@ -113,129 +113,74 @@ namespace BasyaFramework.Core
 
         #region 事件中心
 
-        /// <summary>
-        /// 订阅的事件列表
-        /// </summary>
-        private readonly List<(string eventName, Delegate callback)> _subscribedEvents =
-            new List<(string, Delegate)>();
+        private readonly List<Action> _eventUnsubscribers = new List<Action>();
 
         /// <summary>
-        /// 订阅无参事件
+        /// 订阅无参事件；销毁时自动退订。
         /// </summary>
-        /// <param name="eventName">事件名称</param>
-        /// <param name="callback">回调函数</param>
-        protected void SubscribeEvent(string eventName, Action callback)
+        protected void SubscribeEvent<TEnum>(TEnum eventId, Action callback) where TEnum : struct, Enum
         {
-            BxEventCenter.Instance.AddEventListener(eventName, callback);
-            _subscribedEvents.Add((eventName, callback));
+            var hub = BxEventCenter<TEnum>.Instance;
+            hub.AddEventListener(eventId, callback);
+            _eventUnsubscribers.Add(() => hub.RemoveEventListener(eventId, callback));
         }
 
         /// <summary>
-        /// 订阅单参数事件
+        /// 订阅单参数事件；销毁时自动退订。
         /// </summary>
-        /// <typeparam name="T">参数类型</typeparam>
-        /// <param name="eventName">事件名称</param>
-        /// <param name="callback">回调函数</param>
-        protected void SubscribeEvent<T>(string eventName, Action<T> callback)
+        protected void SubscribeEvent<TEnum, T>(TEnum eventId, Action<T> callback) where TEnum : struct, Enum
         {
-            BxEventCenter.Instance.AddEventListener(eventName, callback);
-            _subscribedEvents.Add((eventName, callback));
+            var hub = BxEventCenter<TEnum>.Instance;
+            hub.AddEventListener(eventId, callback);
+            _eventUnsubscribers.Add(() => hub.RemoveEventListener(eventId, callback));
         }
 
         /// <summary>
-        /// 订阅双参数事件
+        /// 订阅双参数事件；销毁时自动退订。
         /// </summary>
-        /// <typeparam name="T">第一个参数类型</typeparam>
-        /// <typeparam name="T1">第二个参数类型</typeparam>
-        /// <param name="eventName">事件名称</param>
-        /// <param name="callback">回调函数</param>
-        protected void SubscribeEvent<T, T1>(string eventName, Action<T, T1> callback)
+        protected void SubscribeEvent<TEnum, T, T1>(TEnum eventId, Action<T, T1> callback) where TEnum : struct, Enum
         {
-            BxEventCenter.Instance.AddEventListener(eventName, callback);
-            _subscribedEvents.Add((eventName, callback));
+            var hub = BxEventCenter<TEnum>.Instance;
+            hub.AddEventListener(eventId, callback);
+            _eventUnsubscribers.Add(() => hub.RemoveEventListener(eventId, callback));
         }
 
-        /// <summary>
-        /// 取消订阅无参事件
-        /// </summary>
-        /// <param name="eventName">事件名称</param>
-        /// <param name="callback">回调函数</param>
-        protected void UnsubscribeEvent(string eventName, Action callback)
+        protected void UnsubscribeEvent<TEnum>(TEnum eventId, Action callback) where TEnum : struct, Enum
         {
-            BxEventCenter.Instance.RemoveEventListener(eventName, callback);
-            _subscribedEvents.Remove((eventName, (Delegate) callback));
+            BxEventCenter<TEnum>.Instance.RemoveEventListener(eventId, callback);
         }
 
-        /// <summary>
-        /// 取消订阅单参数事件
-        /// </summary>
-        /// <typeparam name="T">参数类型</typeparam>
-        /// <param name="eventName">事件名称</param>
-        /// <param name="callback">回调函数</param>
-        protected void UnsubscribeEvent<T>(string eventName, Action<T> callback)
+        protected void UnsubscribeEvent<TEnum, T>(TEnum eventId, Action<T> callback) where TEnum : struct, Enum
         {
-            BxEventCenter.Instance.RemoveEventListener(eventName, callback);
-            _subscribedEvents.Remove((eventName, (Delegate) callback));
+            BxEventCenter<TEnum>.Instance.RemoveEventListener(eventId, callback);
         }
 
-        /// <summary>
-        /// 取消订阅双参数事件
-        /// </summary>
-        /// <typeparam name="T">第一个参数类型</typeparam>
-        /// <typeparam name="T1">第二个参数类型</typeparam>
-        /// <param name="eventName">事件名称</param>
-        /// <param name="callback">回调函数</param>
-        protected void UnsubscribeEvent<T, T1>(string eventName, Action<T, T1> callback)
+        protected void UnsubscribeEvent<TEnum, T, T1>(TEnum eventId, Action<T, T1> callback) where TEnum : struct, Enum
         {
-            BxEventCenter.Instance.RemoveEventListener(eventName, callback);
-            _subscribedEvents.Remove((eventName, (Delegate) callback));
+            BxEventCenter<TEnum>.Instance.RemoveEventListener(eventId, callback);
         }
 
-        /// <summary>
-        /// 触发无参事件
-        /// </summary>
-        /// <param name="eventName">事件名称</param>
-        protected void EventTrigger(string eventName)
+        protected void EventTrigger<TEnum>(TEnum eventId) where TEnum : struct, Enum
         {
-            BxEventCenter.Instance.EventTrigger(eventName);
+            BxEventCenter<TEnum>.Instance.EventTrigger(eventId);
         }
 
-        /// <summary>
-        /// 触发单参数事件
-        /// </summary>
-        /// <typeparam name="T">参数类型</typeparam>
-        /// <param name="eventName">事件名称</param>
-        /// <param name="eventData">事件数据</param>
-        protected void EventTrigger<T>(string eventName, T eventData)
+        protected void EventTrigger<TEnum, T>(TEnum eventId, T eventData) where TEnum : struct, Enum
         {
-            BxEventCenter.Instance.EventTrigger(eventName, eventData);
+            BxEventCenter<TEnum>.Instance.EventTrigger(eventId, eventData);
         }
 
-        /// <summary>
-        /// 触发双参数事件
-        /// </summary>
-        /// <typeparam name="T">第一个参数类型</typeparam>
-        /// <typeparam name="T1">第二个参数类型</typeparam>
-        /// <param name="eventName">事件名称</param>
-        /// <param name="eventData">第一个事件数据</param>
-        /// <param name="eventData1">第二个事件数据</param>
-        protected void EventTrigger<T, T1>(string eventName, T eventData, T1 eventData1)
+        protected void EventTrigger<TEnum, T, T1>(TEnum eventId, T eventData, T1 eventData1) where TEnum : struct, Enum
         {
-            BxEventCenter.Instance.EventTrigger(eventName, eventData, eventData1);
+            BxEventCenter<TEnum>.Instance.EventTrigger(eventId, eventData, eventData1);
         }
 
-        /// <summary>
-        /// 取消订阅所有事件
-        /// </summary>
         private void UnsubscribeAllEvents()
         {
-            foreach (var (eventName, callback) in _subscribedEvents)
-            {
-                // 直接使用非泛型版本的RemoveEventListener方法，避免反射
-                BxEventCenter.Instance.RemoveEventListener(eventName, callback);
-            }
+            for (var i = _eventUnsubscribers.Count - 1; i >= 0; i--)
+                _eventUnsubscribers[i]?.Invoke();
 
-            _subscribedEvents.Clear();
+            _eventUnsubscribers.Clear();
         }
 
         #endregion

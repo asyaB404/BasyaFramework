@@ -1,94 +1,72 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using BasyaFramework.Logger;
 
 namespace BasyaFramework.EventCenter
 {
     /// <summary>
-    /// 简单的全局事件中心,建议外部使用时使用常量枚举定义事件名
-    /// 性能优化：使用强类型字典避免 DynamicInvoke，直接调用委托提升性能
+    /// 按枚举类型隔离的事件总线：每种 <typeparamref name="TEnum"/> 使用独立的 <see cref="Instance"/>。
+    /// 建议在程序集或模块内自定义枚举；无参桶键为枚举值，有参桶键为枚举 + 参数类型，派发为强类型 <c>Invoke</c>，不使用 <c>DynamicInvoke</c>。
     /// </summary>
-    public class BxEventCenter
+    public sealed class BxEventCenter<TEnum> where TEnum : struct, Enum
     {
-        private static BxEventCenter _instance;
+        private static readonly Lazy<BxEventCenter<TEnum>> LazyInstance =
+            new(() => new BxEventCenter<TEnum>(), LazyThreadSafetyMode.ExecutionAndPublication);
 
-        // 性能优化：使用强类型字典，避免 DynamicInvoke
-        private readonly Dictionary<string, Action> _actionDict = new();
-        private readonly Dictionary<string, object> _genericActionDict = new(); // 存储泛型 Action 的包装
+        public static BxEventCenter<TEnum> Instance => LazyInstance.Value;
 
-        public static BxEventCenter Instance
-        {
-            get
-            {
-                _instance ??= new BxEventCenter();
-                return _instance;
-            }
-        }
-        
+        private readonly Dictionary<TEnum, Action> _actionDict = new();
+        private readonly Dictionary<(TEnum, Type), Delegate> _oneArgDict = new();
+        private readonly Dictionary<(TEnum, Type, Type), Delegate> _twoArgDict = new();
+
         #region 添加事件监听器
 
-        public void AddEventListener(string eventName, Delegate callback)
+        public void AddEventListener(TEnum eventId, Delegate callback)
         {
-            // 尝试根据委托类型添加到对应的字典
             if (callback is Action action)
+                AddEventListener(eventId, action);
+            else
+                BxDebug.LogWarning($"不支持的委托类型: {callback.GetType()}, 事件: {eventId}");
+        }
+
+        public void AddEventListener(TEnum eventId, Action action)
+        {
+            if (_actionDict.TryGetValue(eventId, out var existingAction))
+                _actionDict[eventId] = existingAction + action;
+            else
+                _actionDict[eventId] = action;
+        }
+
+        public void AddEventListener<T>(TEnum eventId, Action<T> action)
+        {
+            var key = (eventId, typeof(T));
+            if (_oneArgDict.TryGetValue(key, out var existing))
             {
-                AddEventListener(eventName, action);
+                if (existing is Action<T> existingAction)
+                    _oneArgDict[key] = existingAction + action;
+                else
+                    BxDebug.LogWarning($"事件类型不匹配: {eventId}, 期望: {typeof(Action<T>)}, 实际: {existing.GetType()}");
             }
             else
             {
-                BxDebug.LogWarning($"不支持的委托类型: {callback.GetType()}, 事件名: {eventName}");
+                _oneArgDict[key] = action;
             }
         }
 
-        public void AddEventListener(string eventName, Action action)
+        public void AddEventListener<T, T1>(TEnum eventId, Action<T, T1> action)
         {
-            if (_actionDict.TryGetValue(eventName, out var existingAction))
+            var key = (eventId, typeof(T), typeof(T1));
+            if (_twoArgDict.TryGetValue(key, out var existing))
             {
-                _actionDict[eventName] = existingAction + action;
-            }
-            else
-            {
-                _actionDict[eventName] = action;
-            }
-        }
-    
-        public void AddEventListener<T>(string eventName, Action<T> action)
-        {
-            string key = GetGenericKey(eventName, typeof(T));
-            if (_genericActionDict.TryGetValue(key, out var existingObj))
-            {
-                if (existingObj is Action<T> existingAction)
-                {
-                    _genericActionDict[key] = existingAction + action;
-                }
+                if (existing is Action<T, T1> existingAction)
+                    _twoArgDict[key] = existingAction + action;
                 else
-                {
-                    BxDebug.LogWarning($"事件类型不匹配: {eventName}, 期望: {typeof(Action<T>)}, 实际: {existingObj.GetType()}");
-                }
+                    BxDebug.LogWarning($"事件类型不匹配: {eventId}, 期望: {typeof(Action<T, T1>)}, 实际: {existing.GetType()}");
             }
             else
             {
-                _genericActionDict[key] = action;
-            }
-        }
-    
-        public void AddEventListener<T, T1>(string eventName, Action<T, T1> action)
-        {
-            string key = GetGenericKey(eventName, typeof(T), typeof(T1));
-            if (_genericActionDict.TryGetValue(key, out var existingObj))
-            {
-                if (existingObj is Action<T, T1> existingAction)
-                {
-                    _genericActionDict[key] = existingAction + action;
-                }
-                else
-                {
-                    BxDebug.LogWarning($"事件类型不匹配: {eventName}, 期望: {typeof(Action<T, T1>)}, 实际: {existingObj.GetType()}");
-                }
-            }
-            else
-            {
-                _genericActionDict[key] = action;
+                _twoArgDict[key] = action;
             }
         }
 
@@ -96,156 +74,116 @@ namespace BasyaFramework.EventCenter
 
         #region 移除事件监听器
 
-        public void RemoveEventListener(string eventName, Action action)
+        public void RemoveEventListener(TEnum eventId, Action action)
         {
-            if (_actionDict.TryGetValue(eventName, out var existingAction))
-            {
-                var newAction = existingAction - action;
-                if (newAction == null)
-                    _actionDict.Remove(eventName);
-                else
-                    _actionDict[eventName] = newAction;
-            }
+            if (!_actionDict.TryGetValue(eventId, out var existingAction))
+                return;
+
+            var newAction = existingAction - action;
+            if (newAction == null)
+                _actionDict.Remove(eventId);
             else
-            {
-                BxDebug.LogWarning($"事件为空,无法被移除: {eventName}");
-            }
+                _actionDict[eventId] = newAction;
         }
-    
-        public void RemoveEventListener<T>(string eventName, Action<T> action)
+
+        public void RemoveEventListener<T>(TEnum eventId, Action<T> action)
         {
-            string key = GetGenericKey(eventName, typeof(T));
-            if (_genericActionDict.TryGetValue(key, out var existingObj))
-            {
-                if (existingObj is Action<T> existingAction)
-                {
-                    var newAction = existingAction - action;
-                    if (newAction == null)
-                        _genericActionDict.Remove(key);
-                    else
-                        _genericActionDict[key] = newAction;
-                }
-            }
+            var key = (eventId, typeof(T));
+            if (!_oneArgDict.TryGetValue(key, out var existing))
+                return;
+
+            if (existing is not Action<T> existingAction)
+                return;
+
+            var newAction = existingAction - action;
+            if (newAction == null)
+                _oneArgDict.Remove(key);
             else
-            {
-                BxDebug.LogWarning($"事件为空,无法被移除: {eventName}");
-            }
+                _oneArgDict[key] = newAction;
         }
-    
-        public void RemoveEventListener<T, T1>(string eventName, Action<T, T1> action)
+
+        public void RemoveEventListener<T, T1>(TEnum eventId, Action<T, T1> action)
         {
-            string key = GetGenericKey(eventName, typeof(T), typeof(T1));
-            if (_genericActionDict.TryGetValue(key, out var existingObj))
-            {
-                if (existingObj is Action<T, T1> existingAction)
-                {
-                    var newAction = existingAction - action;
-                    if (newAction == null)
-                        _genericActionDict.Remove(key);
-                    else
-                        _genericActionDict[key] = newAction;
-                }
-            }
+            var key = (eventId, typeof(T), typeof(T1));
+            if (!_twoArgDict.TryGetValue(key, out var existing))
+                return;
+
+            if (existing is not Action<T, T1> existingAction)
+                return;
+
+            var newAction = existingAction - action;
+            if (newAction == null)
+                _twoArgDict.Remove(key);
             else
-            {
-                BxDebug.LogWarning($"事件为空,无法被移除: {eventName}");
-            }
+                _twoArgDict[key] = newAction;
         }
-        
-        public void RemoveEventListener(string eventName, Delegate callback)
+
+        public void RemoveEventListener(TEnum eventId, Delegate callback)
         {
             if (callback is Action action)
-            {
-                RemoveEventListener(eventName, action);
-            }
+                RemoveEventListener(eventId, action);
             else
-            {
-                BxDebug.LogWarning($"不支持的委托类型: {callback.GetType()}, 事件名: {eventName}");
-            }
+                BxDebug.LogWarning($"不支持的委托类型: {callback.GetType()}, 事件: {eventId}");
         }
 
         #endregion
 
-        #region 触发事件（性能优化：直接调用，避免 DynamicInvoke）
+        #region 触发事件
 
-        public void EventTrigger(string eventName)
+        public void EventTrigger(TEnum eventId)
         {
-            if (_actionDict.TryGetValue(eventName, out var action))
-            {
+            if (_actionDict.TryGetValue(eventId, out var action))
                 action?.Invoke();
-            }
-        }
-    
-        public void EventTrigger<T>(string eventName, T eventData)
-        {
-            string key = GetGenericKey(eventName, typeof(T));
-            if (_genericActionDict.TryGetValue(key, out var actionObj))
-            {
-                if (actionObj is Action<T> action)
-                {
-                    action?.Invoke(eventData);
-                }
-            }
-        }
-    
-        public void EventTrigger<T, T1>(string eventName, T eventData, T1 eventData1)
-        {
-            string key = GetGenericKey(eventName, typeof(T), typeof(T1));
-            if (_genericActionDict.TryGetValue(key, out var actionObj))
-            {
-                if (actionObj is Action<T, T1> action)
-                {
-                    action?.Invoke(eventData, eventData1);
-                }
-            }
         }
 
-        #endregion
-
-        #region 工具方法
-
-        /// <summary>
-        /// 生成泛型事件的唯一键
-        /// </summary>
-        private string GetGenericKey(string eventName, Type type1)
+        public void EventTrigger<T>(TEnum eventId, T eventData)
         {
-            return $"{eventName}__{type1.FullName}";
+            var key = (eventId, typeof(T));
+            if (_oneArgDict.TryGetValue(key, out var del) && del is Action<T> action)
+                action?.Invoke(eventData);
         }
 
-        /// <summary>
-        /// 生成泛型事件的唯一键（双参数）
-        /// </summary>
-        private string GetGenericKey(string eventName, Type type1, Type type2)
+        public void EventTrigger<T, T1>(TEnum eventId, T eventData, T1 eventData1)
         {
-            return $"{eventName}__{type1.FullName}__{type2.FullName}";
+            var key = (eventId, typeof(T), typeof(T1));
+            if (_twoArgDict.TryGetValue(key, out var del) && del is Action<T, T1> action)
+                action?.Invoke(eventData, eventData1);
         }
 
         #endregion
 
         #region 清理方法
 
-        public void Clear(string eventName)
+        public void Clear(TEnum eventId)
         {
-            _actionDict.Remove(eventName);
-            // 清理所有相关的泛型事件（以 eventName 开头的键）
-            var keysToRemove = new List<string>();
-            foreach (var key in _genericActionDict.Keys)
+            _actionDict.Remove(eventId);
+
+            var oneKeys = new List<(TEnum, Type)>();
+            foreach (var key in _oneArgDict.Keys)
             {
-                if (key.StartsWith(eventName + "__"))
-                {
-                    keysToRemove.Add(key);
-                }
+                if (EqualityComparer<TEnum>.Default.Equals(key.Item1, eventId))
+                    oneKeys.Add(key);
             }
-            foreach (var key in keysToRemove)
+
+            foreach (var key in oneKeys)
+                _oneArgDict.Remove(key);
+
+            var twoKeys = new List<(TEnum, Type, Type)>();
+            foreach (var key in _twoArgDict.Keys)
             {
-                _genericActionDict.Remove(key);
+                if (EqualityComparer<TEnum>.Default.Equals(key.Item1, eventId))
+                    twoKeys.Add(key);
             }
+
+            foreach (var key in twoKeys)
+                _twoArgDict.Remove(key);
         }
 
         public void Clear()
         {
             _actionDict.Clear();
-            _genericActionDict.Clear();
+            _oneArgDict.Clear();
+            _twoArgDict.Clear();
         }
 
         #endregion
